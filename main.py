@@ -195,7 +195,7 @@ def get_products():
             query=criterion.get("query", ""),
             category=criterion.get("category", ""),
             max_price=criterion.get("maxPrice"),
-            min_discount=criterion.get("minDiscount"),
+            min_discount=criterion.get("minDiscount") if float(criterion.get("minDiscount") or 0) > 0 else None,
         )
         for p in products:
             if p["id"] not in seen:
