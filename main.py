@@ -53,13 +53,20 @@ def send_telegram(message):
 
 # ─── ML Search ────────────────────────────────────────────────────────────────
 def search_ml(query="", category="", max_price=None, min_discount=None):
-    url = "https://api.mercadolibre.com/sites/MLB/search?limit=10&sort=price_asc"
+    url = "https://api.mercadolibre.com/sites/MLB/search?limit=20&sort=price_asc"
     if query:
         url += f"&q={requests.utils.quote(query)}"
     if category:
         url += f"&category={category}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Referer": "https://www.mercadolivre.com.br/",
+        "Origin": "https://www.mercadolivre.com.br",
+    }
     try:
-        res = requests.get(url, timeout=15)
+        res = requests.get(url, headers=headers, timeout=15)
         results = res.json().get("results", [])
         filtered = []
         for p in results:
@@ -68,7 +75,7 @@ def search_ml(query="", category="", max_price=None, min_discount=None):
             discount = 0
             if p.get("original_price"):
                 discount = ((p["original_price"] - p["price"]) / p["original_price"]) * 100
-            if min_discount and discount < float(min_discount):
+            if min_discount and float(min_discount) > 0 and discount < float(min_discount):
                 continue
             filtered.append({
                 "id": p["id"],
@@ -79,7 +86,6 @@ def search_ml(query="", category="", max_price=None, min_discount=None):
                 "thumbnail": p.get("thumbnail", ""),
                 "permalink": p.get("permalink", ""),
                 "free_shipping": p.get("shipping", {}).get("free_shipping", False),
-                "rating": p.get("seller_reputation", {}).get("level_id", ""),
                 "reviews": p.get("reviews", {}).get("rating_average", 0),
             })
         return filtered
@@ -164,7 +170,12 @@ def monitor_loop():
 def debug():
     try:
         url = "https://api.mercadolibre.com/sites/MLB/search?q=iphone+15&limit=3"
-        res = requests.get(url, timeout=15)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "application/json",
+            "Referer": "https://www.mercadolivre.com.br/",
+        }
+        res = requests.get(url, headers=headers, timeout=15)
         data = res.json()
         return jsonify({
             "status": "ok",
