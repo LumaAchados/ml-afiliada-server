@@ -211,6 +211,18 @@ def monitor_loop():
         time.sleep(3600)  # check every hour
 
 # ─── API Routes ───────────────────────────────────────────────────────────────
+@app.route("/debug_scrape", methods=["GET"])
+def debug_scrape():
+    try:
+        results = search_ml(query="iphone 15", max_price=None, min_discount=None)
+        return jsonify({
+            "status": "ok",
+            "count": len(results),
+            "first": results[0] if results else None
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
 @app.route("/debug", methods=["GET"])
 def debug():
     try:
