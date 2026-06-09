@@ -3,6 +3,7 @@ import json
 import time
 import threading
 import requests
+from bs4 import BeautifulSoup
 from datetime import datetime
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -53,42 +54,86 @@ def send_telegram(message):
 
 # ─── ML Search ────────────────────────────────────────────────────────────────
 def search_ml(query="", category="", max_price=None, min_discount=None):
-    url = "https://api.mercadolibre.com/sites/MLB/search?limit=20&sort=price_asc"
-    if query:
-        url += f"&q={requests.utils.quote(query)}"
-    if category:
-        url += f"&category={category}"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Referer": "https://www.mercadolivre.com.br/",
-        "Origin": "https://www.mercadolivre.com.br",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "pt-BR,pt;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
     }
     try:
-        res = requests.get(url, headers=headers, timeout=15)
-        results = res.json().get("results", [])
-        filtered = []
-        for p in results:
-            if max_price and p["price"] > float(max_price):
+        # Use ML search page directly
+        search_term = query.replace(" ", "-") if query else ""
+        if search_term:
+            url = f"https://lista.mercadolivre.com.br/{search_term}"
+            if category:
+                url = f"https://lista.mercadolivre.com.br/{search_term}_Categoria_{category}"
+        elif category:
+            url = f"https://www.mercadolivre.com.br/c/{category}"
+        else:
+            return []
+
+        res = requests.get(url, headers=headers, timeout=20)
+        soup = BeautifulSoup(res.text, "html.parser")
+
+        results = []
+        items = soup.select(".ui-search-layout__item")[:20]
+
+        for item in items:
+            try:
+                title_el = item.select_one(".poly-component__title")
+                price_el = item.select_one(".andes-money-amount__fraction")
+                original_el = item.select_one(".andes-money-amount--previous .andes-money-amount__fraction")
+                link_el = item.select_one("a.poly-component__title")
+                img_el = item.select_one("img.poly-component__picture")
+                shipping_el = item.select_one(".poly-component__shipping")
+
+                if not title_el or not price_el:
+                    continue
+
+                price_text = price_el.get_text().replace(".", "").replace(",", ".")
+                price = float(price_text) if price_text else 0
+                if price == 0:
+                    continue
+
+                original_price = None
+                if original_el:
+                    orig_text = original_el.get_text().replace(".", "").replace(",", ".")
+                    try:
+                        original_price = float(orig_text)
+                    except:
+                        pass
+
+                discount = 0
+                if original_price and original_price > price:
+                    discount = round(((original_price - price) / original_price) * 100)
+
+                if max_price and price > float(max_price):
+                    continue
+                if min_discount and float(min_discount) > 0 and discount < float(min_discount):
+                    continue
+
+                product_id = link_el["href"].split("MLB")[1].split("-")[0] if link_el and "MLB" in link_el.get("href", "") else str(int(time.time()))
+                thumbnail = img_el.get("src") or img_el.get("data-src") or "" if img_el else ""
+                free_shipping = bool(shipping_el and "grátis" in shipping_el.get_text().lower())
+
+                results.append({
+                    "id": f"MLB{product_id}",
+                    "title": title_el.get_text(strip=True),
+                    "price": price,
+                    "original_price": original_price,
+                    "discount": discount,
+                    "thumbnail": thumbnail,
+                    "permalink": link_el["href"] if link_el else "",
+                    "free_shipping": free_shipping,
+                    "reviews": 0,
+                })
+            except Exception as e:
+                print(f"Item parse error: {e}")
                 continue
-            discount = 0
-            if p.get("original_price"):
-                discount = ((p["original_price"] - p["price"]) / p["original_price"]) * 100
-            if min_discount and float(min_discount) > 0 and discount < float(min_discount):
-                continue
-            filtered.append({
-                "id": p["id"],
-                "title": p["title"],
-                "price": p["price"],
-                "original_price": p.get("original_price"),
-                "discount": round(discount),
-                "thumbnail": p.get("thumbnail", ""),
-                "permalink": p.get("permalink", ""),
-                "free_shipping": p.get("shipping", {}).get("free_shipping", False),
-                "reviews": p.get("reviews", {}).get("rating_average", 0),
-            })
-        return filtered
+
+        return results
     except Exception as e:
         print(f"ML search error: {e}")
         return []
