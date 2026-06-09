@@ -160,6 +160,21 @@ def monitor_loop():
         time.sleep(3600)  # check every hour
 
 # ─── API Routes ───────────────────────────────────────────────────────────────
+@app.route("/debug", methods=["GET"])
+def debug():
+    try:
+        url = "https://api.mercadolibre.com/sites/MLB/search?q=iphone+15&limit=3"
+        res = requests.get(url, timeout=15)
+        data = res.json()
+        return jsonify({
+            "status": "ok",
+            "ml_status_code": res.status_code,
+            "total_results": data.get("paging", {}).get("total", 0),
+            "first_result": data.get("results", [{}])[0].get("title", "none") if data.get("results") else "no results"
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
 @app.route("/", methods=["GET"])
 def health():
     return jsonify({"status": "ok", "message": "ML Afiliada Server rodando!"})
